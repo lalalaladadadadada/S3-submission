@@ -54,7 +54,15 @@ class FixedFIR1D(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         K = self.kernel.size(-1)
         pad = K // 2
-        x = F.pad(x, (pad, pad), mode="reflect")
+        # "reflect" padding requires the padding size to be smaller than the
+        # input length, otherwise PyTorch raises an error.  When processing very
+        # short segments (e.g. 0.5 s signals with only 250 samples), the FIR
+        # kernel (K=1001) would need padding larger than the signal itself.  In
+        # such cases fall back to zero padding which has no such restriction.
+        if x.size(-1) <= pad:
+            x = F.pad(x, (pad, pad), mode="constant")
+        else:
+            x = F.pad(x, (pad, pad), mode="reflect")
         weight = self.kernel.repeat(self.in_channels, 1, 1)  # (C,1,K)
         return F.conv1d(x, weight, groups=self.in_channels)
 
